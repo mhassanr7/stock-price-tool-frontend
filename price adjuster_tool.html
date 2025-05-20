@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stop Loss & Take Profit Adjuster</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border: 2px solid #4A5568; /* Adjusted for dark theme */
+            border-top: 2px solid #8B5CF6; /* Purple accent */
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen flex flex-col items-center justify-center p-4 text-slate-100">
+
+    <div class="w-full max-w-2xl bg-slate-800 p-6 rounded-xl shadow-2xl space-y-4"> <header class="text-center">
+            <h1 class="text-2xl font-bold text-slate-50">Stop Loss & Take Profit Adjuster</h1>
+            <p class="text-sm text-slate-400 mt-1">Adjust levels by percentage based on today's current/last price (Multi-Market, Python Backend).</p>
+        </header>
+
+        <div id="alertBox" class="fixed top-5 right-5 bg-red-700 border border-red-500 text-red-100 px-4 py-3 rounded-md shadow-lg z-50 hidden">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline" id="alertMessage"></span>
+        </div>
+        <div id="infoBox" class="fixed top-5 right-5 bg-blue-700 border border-blue-500 text-blue-100 px-4 py-3 rounded-md shadow-lg z-50 hidden">
+            <strong class="font-bold">Info:</strong>
+            <span class="block sm:inline" id="infoMessage"></span>
+        </div>
+
+        <form id="priceForm" class="space-y-3"> 
+            <div>
+                <label for="marketType" class="block text-sm font-medium text-slate-300 mb-1">Market Type</label>
+                <select id="marketType" name="marketType" class="mt-1 block w-full py-2 px-3 border border-slate-600 bg-slate-700 text-slate-50 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
+                    <option value="us">US Stocks</option>
+                    <option value="canadian">Canadian Stocks (XTSE/TSX)</option>
+                    <option value="crypto">Cryptocurrency</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="stockSymbol" class="block text-sm font-medium text-slate-300 mb-1">Symbol</label>
+                <input type="text" id="stockSymbol" name="stockSymbol" class="mt-1 block w-full py-2 px-3 border border-slate-600 bg-slate-700 text-slate-50 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm" placeholder="e.g., AAPL, ATZ.TO, BTC-USD">
+                 <p id="symbolHelperText" class="mt-1 text-xs text-slate-500">For US stocks, e.g., AAPL, MSFT. Backend will attempt to fetch.</p>
+            </div>
+
+            <div>
+                <label for="entryPrice" class="block text-sm font-medium text-slate-300 mb-1">Your Entry Price</label>
+                <input type="number" id="entryPrice" name="entryPrice" class="mt-1 block w-full py-2 px-3 border border-slate-600 bg-slate-700 text-slate-50 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm" placeholder="e.g., 150.00" step="0.01" required>
+                <p class="mt-1 text-xs text-slate-500">Enter price in the asset's currency (e.g., USD, CAD).</p>
+            </div>
+
+            <div>
+                <label for="initialStopLoss" class="block text-sm font-medium text-slate-300 mb-1">Initial Stop Loss</label>
+                <input type="number" id="initialStopLoss" name="initialStopLoss" class="mt-1 block w-full py-2 px-3 border border-slate-600 bg-slate-700 text-slate-50 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm" placeholder="e.g., 145.00" step="0.01" required>
+            </div>
+
+            <div>
+                <label for="initialTakeProfit" class="block text-sm font-medium text-slate-300 mb-1">Initial Take Profit</label>
+                <input type="number" id="initialTakeProfit" name="initialTakeProfit" class="mt-1 block w-full py-2 px-3 border border-slate-600 bg-slate-700 text-slate-50 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm" placeholder="e.g., 160.00" step="0.01" required>
+            </div>
+
+            <div>
+                <label for="fetchedPriceField" class="block text-sm font-medium text-slate-300 mb-1">Today's Current/Last Price (<span id="fetchedPriceType" class="font-normal text-slate-400">N/A</span>)</label>
+                <div class="flex items-center space-x-2 mt-1">
+                    <input type="number" id="fetchedPriceField" name="fetchedPriceField" class="block w-full py-2 px-3 border border-slate-600 bg-slate-700 text-slate-50 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm" placeholder="Enter or fetch price" step="0.01" required>
+                    <button type="button" id="fetchPriceBtn" class="whitespace-nowrap py-2 px-4 border border-slate-500 rounded-md shadow-sm text-sm font-medium text-slate-200 bg-slate-600 hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-purple-500">
+                        Fetch Price <span id="fetchLoader" class="loader hidden"></span>
+                    </button>
+                </div>
+                <div class="mt-1 p-2 bg-slate-700 border border-slate-600 rounded-md text-sm text-yellow-200"> 
+                    <p><strong class="font-semibold text-yellow-100">Price Fetching Note:</strong> This tool attempts to fetch the price from your local Python backend. Ensure `backend_app.py` is running. If fetching fails, or for critical accuracy, please verify the price with a reliable financial source and manually enter it.</p>
+                </div>
+            </div>
+
+            <button type="submit" id="calculateButton" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-purple-500 disabled:opacity-50"> 
+                Calculate Adjusted Prices
+            </button>
+        </form>
+
+        <div id="results" class="space-y-3 hidden"> 
+            <h2 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-1">Adjusted Levels (based on fetched <span id="basisPriceType" class="font-normal text-slate-400">price</span>):</h2> 
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3"> 
+                <div class="bg-slate-700 p-3 rounded-lg shadow"> 
+                    <p class="output-label text-sm font-medium text-slate-400">Adjusted Stop Loss (<span id="resultCurrencySL">USD</span>):</p>
+                    <p id="adjustedStopLoss" class="mt-1 text-xl font-semibold text-purple-400">0.00</p>
+                </div>
+                <div class="bg-slate-700 p-3 rounded-lg shadow"> 
+                    <p class="output-label text-sm font-medium text-slate-400">Adjusted Take Profit (<span id="resultCurrencyTP">USD</span>):</p>
+                    <p id="adjustedTakeProfit" class="mt-1 text-xl font-semibold text-purple-400">0.00</p>
+                </div>
+            </div>
+             <div class="mt-2 p-2 bg-slate-700 border border-slate-600 rounded-md text-sm text-blue-300"> 
+                <p><strong class="font-semibold text-blue-200">Note:</strong> These adjusted levels maintain the same <strong class="font-semibold">percentage difference</strong> from your entry price, now relative to the fetched current/last price.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get DOM elements
+        const priceForm = document.getElementById('priceForm');
+        const marketTypeEl = document.getElementById('marketType');
+        const stockSymbolEl = document.getElementById('stockSymbol');
+        const symbolHelperTextEl = document.getElementById('symbolHelperText');
+        const entryPriceEl = document.getElementById('entryPrice');
+        const initialStopLossEl = document.getElementById('initialStopLoss');
+        const initialTakeProfitEl = document.getElementById('initialTakeProfit');
+        
+        const fetchedPriceFieldEl = document.getElementById('fetchedPriceField'); 
+        const fetchedPriceTypeEl = document.getElementById('fetchedPriceType'); 
+        const basisPriceTypeEl = document.getElementById('basisPriceType'); 
+
+        const fetchPriceBtn = document.getElementById('fetchPriceBtn'); 
+        const fetchLoader = document.getElementById('fetchLoader');
+        
+        const resultsDiv = document.getElementById('results');
+        const adjustedStopLossEl = document.getElementById('adjustedStopLoss');
+        const adjustedTakeProfitEl = document.getElementById('adjustedTakeProfit');
+        const resultCurrencySLEl = document.getElementById('resultCurrencySL');
+        const resultCurrencyTPEl = document.getElementById('resultCurrencyTP');
+        
+        const alertBox = document.getElementById('alertBox');
+        const alertMessage = document.getElementById('alertMessage');
+        const infoBox = document.getElementById('infoBox');
+        const infoMessage = document.getElementById('infoMessage');
+
+        // Update symbol helper text based on market type
+        marketTypeEl.addEventListener('change', function() {
+            const selectedMarket = this.value;
+            if (selectedMarket === 'us') {
+                symbolHelperTextEl.textContent = "For US stocks, e.g., AAPL, MSFT.";
+                stockSymbolEl.placeholder = "e.g., AAPL, MSFT";
+            } else if (selectedMarket === 'canadian') {
+                symbolHelperTextEl.textContent = "For Canadian (XTSE/TSX), use '.TO' suffix (e.g., ATZ.TO). Backend will try to add '.TO' if missing for simple symbols.";
+                stockSymbolEl.placeholder = "e.g., ATZ.TO, TD";
+            } else if (selectedMarket === 'crypto') {
+                symbolHelperTextEl.textContent = "For Crypto, use format like 'BTC-USD', 'ETH-CAD'. Provide the full pair.";
+                stockSymbolEl.placeholder = "e.g., BTC-USD, ETH-CAD";
+            }
+        });
+        marketTypeEl.dispatchEvent(new Event('change')); // Initial call
+
+        function showAlert(message) {
+            alertMessage.textContent = message;
+            alertBox.style.display = 'block';
+            infoBox.style.display = 'none';
+            setTimeout(() => { alertBox.style.display = 'none'; }, 6000);
+        }
+
+        function showInfo(message) {
+            infoMessage.textContent = message;
+            infoBox.style.display = 'block';
+            alertBox.style.display = 'none';
+            setTimeout(() => { infoBox.style.display = 'none'; }, 8000);
+        }
+        
+        async function fetchStockPriceFromBackend(userInputSymbol, marketType) {
+            fetchLoader.classList.remove('hidden');
+            fetchPriceBtn.disabled = true;
+            fetchedPriceFieldEl.value = ''; 
+            fetchedPriceTypeEl.textContent = 'Fetching...';
+            basisPriceTypeEl.textContent = 'price'; // Reset basis price type
+
+            // Use the correct backend endpoint: /get_stock_price
+            const backendApiUrl = `http://https://www.google.com/url?sa=E&source=gmail&q=mhassanr7.pythonanywhere.com/get_stock_price?symbol=<span class="math-inline">\{encodeURIComponent\(userInputSymbol\.toUpperCase\(\)\)\}&market\_type\=</span>{encodeURIComponent(marketType)}`;
+
+            try {
+                const response = await fetch(backendApiUrl);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ "error": "Unknown error from backend."})); 
+                    let errorMessage = `Backend request failed (${response.status}): `;
+                    errorMessage += errorData.error || "Could not parse error.";
+                    if (errorData.previousClose) errorMessage += ` Prev Close: ${errorData.previousClose}`;
+                    throw new Error(errorMessage);
+                }
+
+                const data = await response.json();
+
+                if (data && data.fetchedPrice !== undefined && data.fetchedPrice !== null) {
+                    const price = parseFloat(data.fetchedPrice);
+                    fetchedPriceFieldEl.value = price.toFixed(2);
+                    
+                    let priceTypeDisplay = data.priceType || "N/A";
+                    fetchedPriceTypeEl.textContent = priceTypeDisplay;
+                    basisPriceTypeEl.textContent = priceTypeDisplay; // Update results header as well
+
+                    let currencyInfo = data.currency && data.currency !== 'N/A' ? data.currency : 'USD';
+                    if (marketType === 'canadian' && (currencyInfo === 'USD' || currencyInfo === 'N/A')) currencyInfo = 'CAD';
+                    // For crypto, yfinance usually includes the quote currency in the symbol (e.g., BTC-USD -> USD)
+                    // and info.currency should reflect that quote currency.
+                    if (marketType === 'crypto' && data.currency && data.currency !== 'N/A') {
+                        currencyInfo = data.currency;
+                    } else if (marketType === 'crypto' && userInputSymbol.includes('-')) {
+                        currencyInfo = userInputSymbol.split('-')[1] || 'USD'; // Fallback for crypto if currency not in response
+                    }
+                    
+                    showInfo(`Fetched ${priceTypeDisplay} for ${data.symbol}: ${price.toFixed(2)} ${currencyInfo}. Open: ${data.openPriceToday !== null && data.openPriceToday !== undefined ? parseFloat(data.openPriceToday).toFixed(2) : 'N/A'}. Prev Close: ${data.previousClose !== null && data.previousClose !== undefined ? parseFloat(data.previousClose).toFixed(2) : 'N/A'}.`);
+                    resultCurrencySLEl.textContent = currencyInfo;
+                    resultCurrencyTPEl.textContent = currencyInfo;
+
+                } else if (data && data.error) {
+                     showInfo(`Backend: ${data.error} (Symbol: ${data.effectiveSymbol || userInputSymbol}, Market: ${marketType}). Please verify symbol/format or enter manually.`);
+                     fetchedPriceTypeEl.textContent = 'Error';
+                } else {
+                    fetchedPriceTypeEl.textContent = 'N/A';
+                    throw new Error('Fetched price not found in backend response.');
+                }
+            } catch (error) {
+                console.error('Error fetching stock price from backend:', error);
+                showAlert(`Fetch error for ${userInputSymbol} (${marketType}): ${error.message}. Is backend_app.py running?`);
+                fetchedPriceTypeEl.textContent = 'Error';
+            } finally {
+                fetchLoader.classList.add('hidden');
+                fetchPriceBtn.disabled = false;
+            }
+        }
+
+        fetchPriceBtn.addEventListener('click', () => {
+            const symbol = stockSymbolEl.value.trim();
+            const market = marketTypeEl.value;
+            if (!symbol) {
+                showAlert('Please enter a symbol.');
+                return;
+            }
+            fetchStockPriceFromBackend(symbol, market);
+        });
+        
+        priceForm.addEventListener('submit', function(event) {
+            event.preventDefault(); 
+
+            const entryPrice = parseFloat(entryPriceEl.value);
+            const initialStopLoss = parseFloat(initialStopLossEl.value);
+            const initialTakeProfit = parseFloat(initialTakeProfitEl.value);
+            const currentFetchedPrice = parseFloat(fetchedPriceFieldEl.value); 
+            
+            let displayCurrency = resultCurrencySLEl.textContent || "USD"; 
+
+            if (isNaN(entryPrice) || isNaN(initialStopLoss) || isNaN(initialTakeProfit) || isNaN(currentFetchedPrice)) {
+                showAlert('Please enter valid numbers in all price fields, including a fetched/entered current price.');
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+
+            if (entryPrice <= 0 || initialStopLoss < 0 || initialTakeProfit <= 0 || currentFetchedPrice <= 0) {
+                showAlert('Entry, Take Profit, and Current/Last Price must be positive. Stop Loss can be 0 or positive.');
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+            
+            if (initialStopLoss >= entryPrice && initialStopLoss !== 0) {
+                showAlert('Initial Stop Loss must be less than your Entry Price (unless SL is 0).');
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+
+            if (initialTakeProfit <= entryPrice) {
+                showAlert('Initial Take Profit must be greater than your Entry Price.');
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+
+            const stopLossPercentage = (entryPrice - initialStopLoss) / entryPrice; 
+            const takeProfitPercentage = (initialTakeProfit - entryPrice) / entryPrice;
+
+            const adjustedStopLoss = currentFetchedPrice * (1 - stopLossPercentage); 
+            const adjustedTakeProfit = currentFetchedPrice * (1 + takeProfitPercentage);
+
+            adjustedStopLossEl.textContent = `${adjustedStopLoss.toFixed(2)}`;
+            adjustedTakeProfitEl.textContent = `${adjustedTakeProfit.toFixed(2)}`;
+            resultsDiv.classList.remove('hidden');
+        });
+    </script>
+
+</body>
+</html>
