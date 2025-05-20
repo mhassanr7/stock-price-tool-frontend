@@ -175,8 +175,7 @@
             basisPriceTypeEl.textContent = 'price'; // Reset basis price type
 
             // Use the correct backend endpoint: /get_stock_price
-            const backendApiUrl = `https://www.google.com/url?sa=E&source=gmail&q=mhassanr7.pythonanywhere.com/get_stock_price?symbol=<span class="math-inline">\{encodeURIComponent\(userInputSymbol\.toUpperCase\(\)\)\}&market\_type\=</span>{encodeURIComponent(marketType)}`;
-
+            const backendApiUrl = `http://https://www.google.com/url?sa=E&source=gmail&q=mhassanr7.pythonanywhere.com/get_stock_price?symbol=<span class="math-inline">\{encodeURIComponent\(userInputSymbol\.toUpperCase\(\)\)\}&market\_type\=</span>{encodeURIComponent(marketType)}`;
             try {
                 const response = await fetch(backendApiUrl);
                 if (!response.ok) {
